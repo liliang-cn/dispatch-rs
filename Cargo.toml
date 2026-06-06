@@ -1,5 +1,5 @@
 [package]
-name = "dispatch"
+name = "dispatch-rs"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.74"
@@ -7,10 +7,14 @@ authors = ["Liang Li"]
 description = "A small SSH batch-operation library: run commands and manage files across many servers in parallel, using your existing ~/.ssh/config."
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/liliang-cn/dispatch"
-homepage = "https://github.com/liliang-cn/dispatch"
+repository = "https://github.com/liliang-cn/dispatch-rs"
+homepage = "https://github.com/liliang-cn/dispatch-rs"
 keywords = ["ssh", "batch", "remote", "automation", "ops"]
 categories = ["network-programming", "command-line-utilities"]
+
+# Published as `dispatch-rs`, but imported as `dispatch` (`use dispatch::...`).
+[lib]
+name = "dispatch"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-util"] }
