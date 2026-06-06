@@ -1,7 +1,14 @@
 # dispatch
 
+[![crates.io](https://img.shields.io/crates/v/dispatch-rs.svg)](https://crates.io/crates/dispatch-rs)
+[![docs.rs](https://img.shields.io/docsrs/dispatch-rs)](https://docs.rs/dispatch-rs)
+[![CI](https://github.com/liliang-cn/dispatch-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/liliang-cn/dispatch-rs/actions/workflows/ci.yml)
+[![license](https://img.shields.io/crates/l/dispatch-rs.svg)](./LICENSE)
+
 A small async Rust library for **SSH batch operations**: run commands and manage
 files across many servers in parallel, reusing your existing `~/.ssh/config`.
+
+> Published as the `dispatch-rs` crate; imported as `dispatch` (`use dispatch::…`).
 
 It wraps the system `ssh`/`scp`, so host aliases, wildcard `Host` blocks,
 `IdentityFile`, `known_hosts`, `ProxyJump` and `ControlMaster` all behave exactly
