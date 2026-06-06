@@ -15,7 +15,11 @@ async fn main() -> dispatch::Result<()> {
         .copy(hosts.clone(), &local, "/tmp/dispatch-xfer.txt")
         .run()
         .await?;
-    println!("copy all_success={} {:?}", up.all_success(), up.failed_hosts());
+    println!(
+        "copy all_success={} {:?}",
+        up.all_success(),
+        up.failed_hosts()
+    );
 
     let out = std::env::temp_dir().join("dispatch-fetch");
     let _ = std::fs::remove_dir_all(&out);
@@ -23,7 +27,11 @@ async fn main() -> dispatch::Result<()> {
         .fetch(hosts, "/tmp/dispatch-xfer.txt", &out)
         .run()
         .await?;
-    println!("fetch all_success={} {:?}", down.all_success(), down.failed_hosts());
+    println!(
+        "fetch all_success={} {:?}",
+        down.all_success(),
+        down.failed_hosts()
+    );
     for (host, r) in &down.hosts {
         println!("  fetched [{host}] -> {} (ok={})", r.dest, r.success);
     }

@@ -62,7 +62,9 @@ impl Inventory {
 
     fn resolve_one(&self, pat: &str, out: &mut Vec<String>, depth: usize) -> Result<()> {
         if depth > 16 {
-            return Err(Error::Config(format!("group recursion too deep at '{pat}'")));
+            return Err(Error::Config(format!(
+                "group recursion too deep at '{pat}'"
+            )));
         }
 
         // 1. group name
@@ -131,12 +133,15 @@ fn parse_ssh_config_hosts(path: Option<&Path>) -> Result<Vec<String>> {
 }
 
 fn parse_groups(path: Option<&Path>) -> Result<BTreeMap<String, Vec<String>>> {
-    let path = path.map(PathBuf::from).unwrap_or_else(default_dispatch_config);
+    let path = path
+        .map(PathBuf::from)
+        .unwrap_or_else(default_dispatch_config);
     if !path.exists() {
         return Ok(BTreeMap::new());
     }
     let content = std::fs::read_to_string(&path)?;
-    let parsed: DispatchToml = toml::from_str(&content).map_err(|e| Error::Config(e.to_string()))?;
+    let parsed: DispatchToml =
+        toml::from_str(&content).map_err(|e| Error::Config(e.to_string()))?;
     let mut groups = BTreeMap::new();
     for (name, def) in parsed.groups {
         let hosts = match def {
@@ -149,7 +154,10 @@ fn parse_groups(path: Option<&Path>) -> Result<BTreeMap<String, Vec<String>>> {
 }
 
 fn default_ssh_config() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".ssh").join("config")
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".ssh")
+        .join("config")
 }
 
 fn default_dispatch_config() -> PathBuf {

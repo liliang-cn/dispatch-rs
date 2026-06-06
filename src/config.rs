@@ -21,6 +21,22 @@ pub struct Config {
 
     /// Default per-host timeout for a single operation.
     pub timeout: Duration,
+
+    /// Override the ssh user (otherwise from `user@host` / ssh config / current user).
+    pub user: Option<String>,
+
+    /// Override the ssh port (otherwise from ssh config / 22).
+    pub port: Option<u16>,
+
+    /// Identity (private key) file to authenticate with.
+    pub identity: Option<PathBuf>,
+
+    /// Run remote commands and file writes through `sudo -n`. Use for non-root
+    /// users that have passwordless sudo.
+    pub sudo: bool,
+
+    /// Connection establishment timeout.
+    pub connect_timeout: Option<Duration>,
 }
 
 impl Default for Config {
@@ -30,6 +46,11 @@ impl Default for Config {
             ssh_config_path: None,
             parallel: 10,
             timeout: Duration::from_secs(300),
+            user: None,
+            port: None,
+            identity: None,
+            sudo: false,
+            connect_timeout: Some(Duration::from_secs(15)),
         }
     }
 }

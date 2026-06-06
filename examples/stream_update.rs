@@ -16,7 +16,11 @@ async fn main() -> dispatch::Result<()> {
             "for i in 1 2 3; do echo line-$i; sleep 0.3; done; echo oops 1>&2",
         )
         .stream(|host, ty, data| {
-            let tag = if ty == StreamType::Stderr { "ERR" } else { "out" };
+            let tag = if ty == StreamType::Stderr {
+                "ERR"
+            } else {
+                "out"
+            };
             print!("[{host}/{tag}] {}", String::from_utf8_lossy(data));
         })
         .run()
@@ -35,7 +39,10 @@ async fn main() -> dispatch::Result<()> {
         .run()
         .await?;
     for (h, r) in &u1.hosts {
-        println!("  [{h}] skipped={} bytes={} ok={}", r.skipped, r.bytes_copied, r.success);
+        println!(
+            "  [{h}] skipped={} bytes={} ok={}",
+            r.skipped, r.bytes_copied, r.success
+        );
     }
 
     println!("== update #2 (same content -> should skip) ==");
@@ -44,7 +51,10 @@ async fn main() -> dispatch::Result<()> {
         .run()
         .await?;
     for (h, r) in &u2.hosts {
-        println!("  [{h}] skipped={} bytes={} ok={}", r.skipped, r.bytes_copied, r.success);
+        println!(
+            "  [{h}] skipped={} bytes={} ok={}",
+            r.skipped, r.bytes_copied, r.success
+        );
     }
     println!("skipped hosts on #2: {:?}", u2.skipped_hosts());
     Ok(())

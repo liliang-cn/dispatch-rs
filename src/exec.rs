@@ -1,5 +1,6 @@
 //! Batch command execution (with optional live streaming).
 
+use crate::conn::Conn;
 use crate::error::Result;
 use crate::Dispatch;
 use futures::stream::{self, StreamExt};
@@ -127,14 +128,17 @@ impl<'a> ExecBuilder<'a> {
         let timeout = self.timeout;
         let input = self.input;
         let stream = self.stream;
+        let conn = self.dispatch.conn.clone();
 
         let results = stream::iter(hosts)
             .map(|host| {
                 let script = script.clone();
                 let input = input.clone();
                 let stream = stream.clone();
+                let conn = conn.clone();
                 async move {
-                    let result = run_one(&host, &script, timeout, input.as_deref(), stream).await;
+                    let result =
+                        run_one(&host, &conn, &script, timeout, input.as_deref(), stream).await;
                     (host, result)
                 }
             })
@@ -177,12 +181,18 @@ pub(crate) fn shell_quote(s: &str) -> String {
 
 async fn run_one(
     host: &str,
+    conn: &Conn,
     script: &str,
     timeout: Duration,
     input: Option<&str>,
     stream: Option<StreamCallback>,
 ) -> Result<HostResult> {
-    match tokio::time::timeout(timeout, exec_via_ssh(host, script, input, stream.as_ref())).await {
+    match tokio::time::timeout(
+        timeout,
+        exec_via_ssh(host, conn, script, input, stream.as_ref()),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(_) => Ok(HostResult {
             host: host.to_string(),
@@ -195,20 +205,35 @@ async fn run_one(
     }
 }
 
-/// Run a single command on a host over a fresh ssh session. Reused by the file
-/// `update` path for remote checksum/backup/chmod helpers (stream = None).
+/// Run a single command on a host over a fresh ssh session.
 pub(crate) async fn exec_via_ssh(
+    host: &str,
+    conn: &Conn,
+    script: &str,
+    input: Option<&str>,
+    stream: Option<&StreamCallback>,
+) -> Result<HostResult> {
+    let session = conn.connect(host).await?;
+    let result = run_on_session(&session, conn, host, script, input, stream).await;
+    let _ = session.close().await;
+    result
+}
+
+/// Run a command on an already-open session (lets callers reuse one connection
+/// for several commands, e.g. the `update` checksum/backup/chmod sequence).
+pub(crate) async fn run_on_session(
+    session: &openssh::Session,
+    conn: &Conn,
     host: &str,
     script: &str,
     input: Option<&str>,
     stream: Option<&StreamCallback>,
 ) -> Result<HostResult> {
-    use openssh::{KnownHosts, Session, Stdio};
+    use openssh::Stdio;
 
-    let session = Session::connect(host, KnownHosts::Add).await?;
-
-    let mut cmd = session.command("sh");
-    cmd.arg("-c").arg(script);
+    let (program, args) = conn.shell_argv(script);
+    let mut cmd = session.command(program);
+    cmd.args(args);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     if input.is_some() {
         cmd.stdin(Stdio::piped());
@@ -238,7 +263,6 @@ pub(crate) async fn exec_via_ssh(
     tokio::join!(write_stdin, pump_out, pump_err);
 
     let status = child.wait().await?;
-    let _ = session.close().await;
 
     Ok(HostResult {
         host: host.to_string(),

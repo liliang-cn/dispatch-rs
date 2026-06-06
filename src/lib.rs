@@ -35,6 +35,7 @@
 //! ```
 
 mod config;
+mod conn;
 mod error;
 mod exec;
 mod inventory;
@@ -45,14 +46,18 @@ pub use error::{Error, Result};
 pub use exec::{ExecBuilder, ExecResult, HostResult, StreamCallback, StreamType};
 pub use inventory::Inventory;
 pub use transfer::{
-    CopyBuilder, FetchBuilder, TransferHostResult, TransferResult, UpdateBuilder, UpdateHostResult,
-    UpdateResult,
+    CopyBuilder, FetchBuilder, ProgressCallback, ReadBuilder, ReadHostResult, ReadResult,
+    TransferHostResult, TransferResult, UpdateBuilder, UpdateHostResult, UpdatePhase, UpdateResult,
+    WriteBuilder,
 };
+
+use conn::Conn;
 
 /// The dispatch client: holds configuration and the resolved inventory.
 pub struct Dispatch {
     pub(crate) config: Config,
     pub(crate) inventory: Inventory,
+    pub(crate) conn: Conn,
 }
 
 impl Dispatch {
@@ -63,12 +68,22 @@ impl Dispatch {
             config.ssh_config_path.as_deref(),
             config.config_path.as_deref(),
         )?;
-        Ok(Self { config, inventory })
+        let conn = Conn::from_config(&config);
+        Ok(Self {
+            config,
+            inventory,
+            conn,
+        })
     }
 
     /// Build directly from a pre-loaded [`Inventory`].
     pub fn with_inventory(config: Config, inventory: Inventory) -> Self {
-        Self { config, inventory }
+        let conn = Conn::from_config(&config);
+        Self {
+            config,
+            inventory,
+            conn,
+        }
     }
 
     /// Resolve patterns (aliases, groups, wildcards, IPs) into concrete hosts.
@@ -119,6 +134,26 @@ impl Dispatch {
         dest: impl Into<String>,
     ) -> UpdateBuilder<'_> {
         UpdateBuilder::new(self, collect(patterns), src, dest)
+    }
+
+    /// Write in-memory `content` to `dest` on each matched host, creating parent
+    /// directories first. Honors the client's `sudo` setting; see [`WriteBuilder`].
+    pub fn write(
+        &self,
+        patterns: impl IntoIterator<Item = impl Into<String>>,
+        content: impl Into<Vec<u8>>,
+        dest: impl Into<String>,
+    ) -> WriteBuilder<'_> {
+        WriteBuilder::new(self, collect(patterns), content.into(), dest)
+    }
+
+    /// Read `path` from each matched host, returning its bytes. See [`ReadBuilder`].
+    pub fn read(
+        &self,
+        patterns: impl IntoIterator<Item = impl Into<String>>,
+        path: impl Into<String>,
+    ) -> ReadBuilder<'_> {
+        ReadBuilder::new(self, collect(patterns), path.into())
     }
 }
 
