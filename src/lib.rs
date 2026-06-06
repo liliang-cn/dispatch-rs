@@ -41,7 +41,7 @@ mod exec;
 mod inventory;
 mod transfer;
 
-pub use config::Config;
+pub use config::{Config, HostKeyChecking};
 pub use error::{Error, Result};
 pub use exec::{ExecBuilder, ExecResult, HostResult, StreamCallback, StreamType};
 pub use inventory::Inventory;

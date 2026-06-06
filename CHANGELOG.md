@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- **Host-key policy** — `Config::host_key_checking` (`Strict` / `AcceptNew` /
+  `AcceptAny`, mapping to ssh's `StrictHostKeyChecking`) and
+  `Config::known_hosts_file` (e.g. `/dev/null`). Lets managed clusters that
+  re-image nodes accept changed keys without failing.
+
 ## 0.2.0
 
 - **`write`** — write in-memory content to a remote file, **creating parent

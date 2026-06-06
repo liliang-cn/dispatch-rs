@@ -1,6 +1,22 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+/// How to verify remote host keys (maps to ssh's `StrictHostKeyChecking`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HostKeyChecking {
+    /// Reject hosts not already in the known-hosts file
+    /// (`StrictHostKeyChecking=yes`).
+    Strict,
+    /// Accept and remember new hosts, but reject a host whose key changed
+    /// (`StrictHostKeyChecking=accept-new`). The default.
+    #[default]
+    AcceptNew,
+    /// Accept any key without verification (`StrictHostKeyChecking=no`).
+    /// Insecure — only for environments that establish trust out-of-band
+    /// (e.g. a managed cluster where nodes are frequently re-imaged).
+    AcceptAny,
+}
+
 /// Client configuration.
 ///
 /// All fields are optional with sensible defaults. Per-host connection details
@@ -37,6 +53,13 @@ pub struct Config {
 
     /// Connection establishment timeout.
     pub connect_timeout: Option<Duration>,
+
+    /// Host-key verification policy.
+    pub host_key_checking: HostKeyChecking,
+
+    /// Override the known-hosts file (e.g. `/dev/null` to neither read nor
+    /// persist host keys). `None` uses ssh's default.
+    pub known_hosts_file: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -51,6 +74,8 @@ impl Default for Config {
             identity: None,
             sudo: false,
             connect_timeout: Some(Duration::from_secs(15)),
+            host_key_checking: HostKeyChecking::AcceptNew,
+            known_hosts_file: None,
         }
     }
 }

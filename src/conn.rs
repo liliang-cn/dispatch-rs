@@ -1,7 +1,7 @@
 //! Connection settings shared by every remote operation: how to open an ssh
 //! session and how to wrap commands (sudo) for a given [`crate::Config`].
 
-use crate::config::Config;
+use crate::config::{Config, HostKeyChecking};
 use crate::error::Result;
 use openssh::{KnownHosts, Session, SessionBuilder};
 use std::path::PathBuf;
@@ -14,6 +14,8 @@ pub(crate) struct Conn {
     pub identity: Option<PathBuf>,
     pub connect_timeout: Option<Duration>,
     pub sudo: bool,
+    pub host_key_checking: HostKeyChecking,
+    pub known_hosts_file: Option<PathBuf>,
 }
 
 impl Conn {
@@ -24,13 +26,22 @@ impl Conn {
             identity: cfg.identity.clone(),
             connect_timeout: cfg.connect_timeout,
             sudo: cfg.sudo,
+            host_key_checking: cfg.host_key_checking,
+            known_hosts_file: cfg.known_hosts_file.clone(),
         }
     }
 
     /// Open a session to `host` (which may be `user@host`) applying the config.
     pub async fn connect(&self, host: &str) -> Result<Session> {
         let mut b = SessionBuilder::default();
-        b.known_hosts_check(KnownHosts::Add);
+        b.known_hosts_check(match self.host_key_checking {
+            HostKeyChecking::Strict => KnownHosts::Strict,
+            HostKeyChecking::AcceptNew => KnownHosts::Add,
+            HostKeyChecking::AcceptAny => KnownHosts::Accept,
+        });
+        if let Some(f) = &self.known_hosts_file {
+            b.user_known_hosts_file(f);
+        }
         if let Some(u) = &self.user {
             b.user(u.clone());
         }
