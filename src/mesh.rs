@@ -47,8 +47,9 @@ echo "MESH_ADDED=$added""#
     )
 }
 
-/// Shell script (phase 3): ssh-keyscan the given hosts (ed25519) and merge new
-/// lines into the mesh user's known_hosts. Prints `MESH_KH_ADDED=<n>`.
+/// Shell script (phase 3): ssh-keyscan the given hosts (ed25519) and append any
+/// new lines to the mesh user's known_hosts (existing content untouched).
+/// Prints `MESH_KH_ADDED=<n>`.
 #[allow(dead_code)]
 fn keyscan_script(user: &str, hosts: &[String]) -> String {
     let u = shell_quote(user);
@@ -65,16 +66,21 @@ if [ -z "$home" ]; then echo "mesh: user $u not found" >&2; exit 3; fi
 install -d -m 700 "$home/.ssh"
 kh="$home/.ssh/known_hosts"
 touch "$kh"
-before=$(wc -l < "$kh")
+rm -f "$kh".scan
 for h in {host_args}; do
   ssh-keyscan -t ed25519 "$h" 2>/dev/null >> "$kh".scan || true
 done
+added=0
 if [ -f "$kh".scan ]; then
-  sort -u "$kh" "$kh".scan > "$kh".merged && mv "$kh".merged "$kh" && rm -f "$kh".scan
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    if ! grep -qxF -- "$line" "$kh"; then printf '%s\n' "$line" >> "$kh"; added=$((added+1)); fi
+  done < "$kh".scan
+  rm -f "$kh".scan
 fi
+chmod 600 "$kh"
 chown "$u:$u" "$kh" 2>/dev/null || true
-after=$(wc -l < "$kh")
-echo "MESH_KH_ADDED=$((after-before))""#
+echo "MESH_KH_ADDED=$added""#
     )
 }
 
@@ -124,6 +130,10 @@ mod tests {
         assert!(s.contains("ssh-keyscan -t ed25519"));
         assert!(s.contains("'orange1' 'orange2'"));
         assert!(s.contains("MESH_KH_ADDED="));
+        // appends only new lines (no global sort -u rewrite of existing file)
+        assert!(s.contains("grep -qxF"));
+        assert!(!s.contains("sort -u"));
+        assert!(s.contains("chmod 600"));
     }
 
     #[test]
