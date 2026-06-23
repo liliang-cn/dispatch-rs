@@ -21,6 +21,7 @@ pub struct MeshHostResult {
 /// Aggregate result of a mesh bootstrap, keyed by host.
 #[derive(Debug, Clone)]
 pub struct MeshResult {
+    /// Per-host outcome, keyed by the resolved host string.
     pub hosts: BTreeMap<String, MeshHostResult>,
 }
 
@@ -158,6 +159,11 @@ impl<'a> MeshBuilder<'a> {
     }
 
     /// Also `ssh-keyscan` peers into the mesh user's `known_hosts`. Default false.
+    ///
+    /// The scan uses each resolved host string as-is, run on every node, so for
+    /// the entries to be useful that string must resolve on the remote nodes and
+    /// match the name peers actually connect by (use real hostnames/IPs, not
+    /// local-only ssh-config aliases). Only ed25519 host keys are scanned.
     pub fn also_known_hosts(mut self, yes: bool) -> Self {
         self.also_known_hosts = yes;
         self
