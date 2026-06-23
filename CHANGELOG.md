@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add `Dispatch::mesh(...)` — bootstrap a passwordless SSH mesh for a target
+  user (default `root`) across hosts. Ensures an ed25519 keypair per host,
+  idempotently distributes `authorized_keys`, and optionally populates
+  `known_hosts`. Honors the client's `sudo` setting.
+
 ## 0.3.0
 
 - **Host-key policy** — `Config::host_key_checking` (`Strict` / `AcceptNew` /
