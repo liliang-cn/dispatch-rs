@@ -1,10 +1,47 @@
 //! SSH passwordless mesh bootstrap: establish `user <-> user` trust across hosts.
 
+use crate::error::Result;
 use crate::exec::shell_quote;
+use crate::Dispatch;
+use std::collections::BTreeMap;
+
+/// Per-host outcome of a mesh bootstrap.
+#[derive(Debug, Clone, Default)]
+pub struct MeshHostResult {
+    /// The host's collected public key (None if phase 1 failed).
+    pub public_key: Option<String>,
+    /// New authorized_keys lines written for this host on this run.
+    pub keys_added: usize,
+    /// New known_hosts lines written (0 unless `also_known_hosts`).
+    pub known_hosts_added: usize,
+    /// First error encountered for this host, if any.
+    pub error: Option<String>,
+}
+
+/// Aggregate result of a mesh bootstrap, keyed by host.
+#[derive(Debug, Clone)]
+pub struct MeshResult {
+    pub hosts: BTreeMap<String, MeshHostResult>,
+}
+
+impl MeshResult {
+    /// True if every host completed without error.
+    pub fn all_success(&self) -> bool {
+        self.hosts.values().all(|h| h.error.is_none())
+    }
+
+    /// Hosts that hit an error during bootstrap.
+    pub fn failed_hosts(&self) -> Vec<String> {
+        self.hosts
+            .iter()
+            .filter(|(_, h)| h.error.is_some())
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+}
 
 /// Shell script (phase 1): ensure the mesh user has an ed25519 keypair, then
 /// print its public key on stdout. Honors sudo via the caller's Conn wrapping.
-#[allow(dead_code)]
 fn keygen_script(user: &str) -> String {
     let u = shell_quote(user);
     format!(
@@ -24,7 +61,6 @@ cat "$home/.ssh/id_ed25519.pub""#
 /// Shell script (phase 2): read public keys from stdin (one per line) and append
 /// any that are missing from the mesh user's authorized_keys. Prints
 /// `MESH_ADDED=<n>`.
-#[allow(dead_code)]
 fn distribute_script(user: &str) -> String {
     let u = shell_quote(user);
     format!(
@@ -50,7 +86,6 @@ echo "MESH_ADDED=$added""#
 /// Shell script (phase 3): ssh-keyscan the given hosts (ed25519) and append any
 /// new lines to the mesh user's known_hosts (existing content untouched).
 /// Prints `MESH_KH_ADDED=<n>`.
-#[allow(dead_code)]
 fn keyscan_script(user: &str, hosts: &[String]) -> String {
     let u = shell_quote(user);
     let host_args = hosts
@@ -86,7 +121,6 @@ echo "MESH_KH_ADDED=$added""#
 
 /// Parse a `TAG=<integer>` line out of command stdout (e.g. `MESH_ADDED=3`).
 /// Returns 0 if the tag is absent or unparseable.
-#[allow(dead_code)]
 fn parse_tagged_count(stdout: &str, tag: &str) -> usize {
     let prefix = format!("{tag}=");
     stdout
@@ -94,6 +128,141 @@ fn parse_tagged_count(stdout: &str, tag: &str) -> usize {
         .find_map(|l| l.trim().strip_prefix(&prefix))
         .and_then(|n| n.trim().parse::<usize>().ok())
         .unwrap_or(0)
+}
+
+/// Builder for [`Dispatch::mesh`]. Establishes passwordless SSH trust for
+/// [`MeshBuilder::user`] (default `root`) across the targeted hosts.
+pub struct MeshBuilder<'a> {
+    dispatch: &'a Dispatch,
+    patterns: Vec<String>,
+    user: String,
+    also_known_hosts: bool,
+    parallel: usize,
+}
+
+impl<'a> MeshBuilder<'a> {
+    pub(crate) fn new(dispatch: &'a Dispatch, patterns: Vec<String>) -> Self {
+        Self {
+            parallel: dispatch.config.parallel,
+            dispatch,
+            patterns,
+            user: "root".to_string(),
+            also_known_hosts: false,
+        }
+    }
+
+    /// Mesh target user whose `~/.ssh/authorized_keys` is populated. Default `root`.
+    pub fn user(mut self, user: impl Into<String>) -> Self {
+        self.user = user.into();
+        self
+    }
+
+    /// Also `ssh-keyscan` peers into the mesh user's `known_hosts`. Default false.
+    pub fn also_known_hosts(mut self, yes: bool) -> Self {
+        self.also_known_hosts = yes;
+        self
+    }
+
+    /// Max hosts processed concurrently per phase.
+    pub fn parallel(mut self, n: usize) -> Self {
+        self.parallel = n.max(1);
+        self
+    }
+
+    /// Resolve hosts and run the bootstrap. Per-host failures are reported in
+    /// [`MeshResult`]; `Err` is only returned for setup failures (e.g. no hosts).
+    pub async fn run(self) -> Result<MeshResult> {
+        let hosts = self.dispatch.inventory.resolve(&self.patterns)?;
+        let mut out: BTreeMap<String, MeshHostResult> = hosts
+            .iter()
+            .map(|h| (h.clone(), MeshHostResult::default()))
+            .collect();
+
+        // Phase 1: ensure keypair + collect public keys.
+        let keygen = self
+            .dispatch
+            .exec(hosts.clone(), keygen_script(&self.user))
+            .parallel(self.parallel)
+            .run()
+            .await?;
+        let mut good: Vec<String> = Vec::new();
+        for (host, r) in &keygen.hosts {
+            let entry = out.get_mut(host).expect("host present");
+            if r.success && !r.stdout.trim().is_empty() {
+                entry.public_key = Some(r.stdout.trim().to_string());
+                good.push(host.clone());
+            } else {
+                entry.error = Some(format!(
+                    "keygen failed (exit {}): {}",
+                    r.exit_code,
+                    first_nonempty(&r.error, &r.stderr)
+                ));
+            }
+        }
+
+        if good.is_empty() {
+            return Ok(MeshResult { hosts: out });
+        }
+
+        // Combined key set distributed to every good host (full mesh, incl. self).
+        let combined = good
+            .iter()
+            .filter_map(|h| out.get(h).and_then(|e| e.public_key.clone()))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Phase 2: distribute authorized_keys idempotently.
+        let dist = self
+            .dispatch
+            .exec(good.clone(), distribute_script(&self.user))
+            .input(combined)
+            .parallel(self.parallel)
+            .run()
+            .await?;
+        for (host, r) in &dist.hosts {
+            let entry = out.get_mut(host).expect("host present");
+            if r.success {
+                entry.keys_added = parse_tagged_count(&r.stdout, "MESH_ADDED");
+            } else {
+                entry.error = Some(format!(
+                    "distribute failed (exit {}): {}",
+                    r.exit_code,
+                    first_nonempty(&r.error, &r.stderr)
+                ));
+            }
+        }
+
+        // Phase 3 (optional): known_hosts.
+        if self.also_known_hosts {
+            let scan = self
+                .dispatch
+                .exec(good.clone(), keyscan_script(&self.user, &hosts))
+                .parallel(self.parallel)
+                .run()
+                .await?;
+            for (host, r) in &scan.hosts {
+                let entry = out.get_mut(host).expect("host present");
+                if r.success {
+                    entry.known_hosts_added = parse_tagged_count(&r.stdout, "MESH_KH_ADDED");
+                } else if entry.error.is_none() {
+                    entry.error = Some(format!(
+                        "keyscan failed (exit {}): {}",
+                        r.exit_code,
+                        first_nonempty(&r.error, &r.stderr)
+                    ));
+                }
+            }
+        }
+
+        Ok(MeshResult { hosts: out })
+    }
+}
+
+fn first_nonempty(err: &Option<String>, stderr: &str) -> String {
+    match err {
+        Some(e) if !e.is_empty() => e.clone(),
+        _ => stderr.trim().to_string(),
+    }
 }
 
 #[cfg(test)]

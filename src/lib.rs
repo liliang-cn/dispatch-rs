@@ -46,6 +46,7 @@ pub use config::{Config, HostKeyChecking};
 pub use error::{Error, Result};
 pub use exec::{ExecBuilder, ExecResult, HostResult, StreamCallback, StreamType};
 pub use inventory::Inventory;
+pub use mesh::{MeshBuilder, MeshHostResult, MeshResult};
 pub use transfer::{
     CopyBuilder, FetchBuilder, ProgressCallback, ReadBuilder, ReadHostResult, ReadResult,
     TransferHostResult, TransferResult, UpdateBuilder, UpdateHostResult, UpdatePhase, UpdateResult,
@@ -155,6 +156,12 @@ impl Dispatch {
         path: impl Into<String>,
     ) -> ReadBuilder<'_> {
         ReadBuilder::new(self, collect(patterns), path.into())
+    }
+
+    /// Establish passwordless SSH trust for a target user (default `root`)
+    /// across every host matched by `patterns`. See [`MeshBuilder`].
+    pub fn mesh(&self, patterns: impl IntoIterator<Item = impl Into<String>>) -> MeshBuilder<'_> {
+        MeshBuilder::new(self, collect(patterns))
     }
 }
 
