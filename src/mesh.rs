@@ -72,7 +72,7 @@ install -d -m 700 "$home/.ssh"
 ak="$home/.ssh/authorized_keys"
 touch "$ak"
 added=0
-while IFS= read -r key; do
+while IFS= read -r key || [ -n "$key" ]; do
   [ -z "$key" ] && continue
   if ! grep -qxF -- "$key" "$ak"; then printf '%s\n' "$key" >> "$ak"; added=$((added+1)); fi
 done
@@ -107,7 +107,7 @@ for h in {host_args}; do
 done
 added=0
 if [ -f "$kh".scan ]; then
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
     [ -z "$line" ] && continue
     if ! grep -qxF -- "$line" "$kh"; then printf '%s\n' "$line" >> "$kh"; added=$((added+1)); fi
   done < "$kh".scan
@@ -291,6 +291,9 @@ mod tests {
         assert!(s.contains("grep -qxF"));
         assert!(s.contains("MESH_ADDED=$added"));
         assert!(s.contains("chmod 600"));
+        // The combined keyset arrives without a trailing newline, so the read
+        // loop must still process the final line (classic last-line drop).
+        assert!(s.contains(r#"read -r key || [ -n "$key" ]"#));
     }
 
     #[test]
