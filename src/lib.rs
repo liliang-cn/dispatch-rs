@@ -39,6 +39,7 @@ mod conn;
 mod error;
 mod exec;
 mod inventory;
+mod mesh;
 mod transfer;
 
 pub use config::{Config, HostKeyChecking};
