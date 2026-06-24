@@ -112,6 +112,33 @@ async fn main() -> dispatch::Result<()> {
 }
 ```
 
+### Bootstrap a passwordless SSH mesh
+
+Establish `root <-> root` trust across a set of hosts (e.g. so cluster nodes can
+reach each other after a re-image). Connects as the configured transport user
+(with `sudo` if set) and sets up the mesh for the target user:
+
+```rust
+let res = client
+    .mesh(["orange1", "orange2", "orange3"])
+    .user("root")            // mesh target user; default "root"
+    .also_known_hosts(true)  // also pre-populate known_hosts
+    .run()
+    .await?;
+
+for (host, r) in &res.hosts {
+    if let Some(err) = &r.error {
+        eprintln!("[{host}] mesh failed: {err}");
+    } else {
+        println!("[{host}] +{} authorized_keys", r.keys_added);
+    }
+}
+assert!(res.all_success());
+```
+
+Idempotent: existing keypairs are reused and only missing `authorized_keys`
+lines are appended, so re-running is a no-op.
+
 ### Non-root with sudo, custom port/identity
 
 ```rust
